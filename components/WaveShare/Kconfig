@@ -1,0 +1,30 @@
+# Kconfig file for WaveShare
+
+menu "WaveShare configuration"
+
+    config WS_USE_USB
+        bool "Check this to use Usb Host"
+        default n
+    config WS_USE_GRBL_EXAMPLE
+        bool "Check this to use Grbl Example"
+        default n
+        depends on WS_USE_USB
+    config WS_USE_SDCARD
+        bool "Check this to use SD Card"
+        default n
+    config WS_USE_NVS
+        bool "Check this to use NVS"
+        default n
+    config WS_USE_LVGL
+        bool "Check this to use LVGL"
+        default n
+    config WS_USE_SCREENSAVER
+        bool "Check this to use Screensaver"
+        default n
+        depends on WS_USE_LVGL
+    config WS_TIMER_VALUE
+        int "Set the timer value in seconds for the screensaver"
+        default 60
+        depends on WS_USE_SCREENSAVER
+                    
+endmenu

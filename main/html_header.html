@@ -1,0 +1,120 @@
+<html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Esp32</title>
+    </head>
+<style>
+body {
+  width:80%;
+  margin-left: auto;
+  margin-right: auto;
+  color: #696b6e;
+}
+h3 {
+  display: inline-block;
+  margin: 0;
+  padding: 20px 0;
+  font-size: 20px;
+  font-weight: 500;
+  border-bottom: 3px solid #b94040;
+}
+.classtable {
+  width:100%;
+}
+.classtable table {
+  width: 100%;
+  padding-top: 10px;
+  border-collapse: collapse;
+  color: #767779;
+}
+.classtable table thead {
+  background-color: #fff;
+}
+.classtable table thead td {
+  border-bottom: 1px solid #d3dae0;
+  font-weight: 800;
+  font-size: 14px;
+  padding: 12px;
+}
+.classtable table thead td:hover{
+  border-bottom: 1px solid #767779;
+}
+.classtable table tbody tr td {
+  border-bottom: 1px solid #e5e9ed;
+}
+.classtable table tbody tr:nth-child(odd) {
+  background-color: #fbfcfc;
+}
+.classtable table tbody tr:hover {
+  background-color: #daedff;
+}
+.classtable table tbody td a {
+  font-weight: inherit;
+  font-size: inherit;
+  text-decoration: none;
+  color: #767779;
+  text-align: center;
+  display: inline-block;
+}
+.classtable table tbody td img {
+  width: 24px;
+  height: 24px;
+  filter: invert(63%) sepia(85%) saturate(425%) hue-rotate(2deg) brightness(91%) contrast(92%);
+  vertical-align: middle;
+}
+
+</style>
+<script>
+
+function setpath() {
+    var default_path = document.getElementById("newfile").files[0].name;
+    document.getElementById("filepath").value = default_path;
+}
+function upload() {
+    var filePath = document.getElementById("filepath").value;
+    var upload_path = "/upload/" + filePath;
+    var fileInput = document.getElementById("newfile").files;
+
+    /* Max size of an individual file. Make sure this
+     * value is same as that set in file_server.c */
+    var MAX_FILE_SIZE = 400*1024;
+    var MAX_FILE_SIZE_STR = "400KB";
+
+    if (fileInput.length == 0) {
+        alert("No file selected!");
+    } else if (filePath.length == 0) {
+        alert("File path on server is not set!");
+    } else if (filePath.indexOf(' ') >= 0) {
+        alert("File path on server cannot have spaces!");
+    } else if (filePath[filePath.length-1] == '/') {
+        alert("File name not specified after path!");
+    } else if (fileInput[0].size > 400*1024) {
+        alert("File size must be less than 400KB!");
+    } else {
+        document.getElementById("newfile").disabled = true;
+        document.getElementById("filepath").disabled = true;
+        document.getElementById("upload").disabled = true;
+
+        var file = fileInput[0];
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (xhttp.readyState == 4) {
+                if (xhttp.status == 200) {
+                    document.open();
+                    document.write(xhttp.responseText);
+                    document.close();
+                } else if (xhttp.status == 0) {
+                    alert("Server closed the connection abruptly!");
+                    location.reload()
+                } else {
+                    alert(xhttp.status + " Error!\n" + xhttp.responseText);
+                    location.reload()
+                }
+            }
+        };
+        xhttp.open("POST", upload_path, true);
+        xhttp.send(file);
+    }
+}
+</script>
+<body>
