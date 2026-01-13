@@ -4,7 +4,7 @@
 
 MQTT Jeedom Display est un programme qui permet d'afficher des données en provenance de Jeedom et d'envoyer des commandes vers Jeedom.
 
-Le programme s'exécute sur la platine ESP32-S3-LCD-4.3 de Waveshare.
+Le programme s'exécute sur la platine ESP32-S3-LCD-4.3 de Waveshare et utilise lvgl pour l'affichage.
 
 Les informations transitent via MQTT.
 
@@ -37,7 +37,7 @@ Elle va redémarrer sur un écran noir mais une application Web sera disponible 
 
 Cliquez sur le fichier *mqtt_exemple.json* pour le télécharger, renommez le *mqtt.json* et introduisez les paramètres de votre broker. Téléchargez le fichier *mqtt.json* ainsi modifié et téléversez le sur la platine.
 
-Vous obtenez :
+mqtt_exemple.json
 
 ```
 {
@@ -52,7 +52,47 @@ L'étape suivante consistera à créer un fichier display.json qui permettra de 
 
 # Affichage
 
-    Configuration du fichier display.json
+Configuration du fichier display.json
+```
+{
+  "mqtt": 
+  [
+    {
+      "topic": "topic/temperature"
+    },
+    {
+      "topic": "topic/humidite"
+    }
+  ],
+  "objects": 
+  [
+    {
+      "type": "tab",
+      "text": "Salon",
+      "objects": 
+      [
+        {
+          "type": "label",
+          "align": "top_left",
+          "x": 30,
+          "y": 35,
+          "text": "%s°C",
+          "topic": "topic/temperature"
+        },
+        {
+          "type": "label",
+          "align": "top_left",
+          "x": 30,
+          "y": 65,
+          "text": "%s%%",
+          "topic": "topic/humidite"
+        }
+      ]
+    }
+  ]
+}
+```
+Le fichier commence par une liste de topics mqtt et ensuite d'une liste d'objets qui vont décrire l'affichage de ses topics. Chaque objet que nous allons décrire pourra contenir lui même une liste d'objets enfants. Dans l'exemple l'objet de type *tab* contient deux objets de type *label*.
 
 ## Topics
 
