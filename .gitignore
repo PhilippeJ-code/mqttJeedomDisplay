@@ -78,3 +78,4 @@ Desktop.ini
 *.sln.docstates # Visual Studio
 
 /spiffs_image/mqtt.json
+/spiffs_image/display.json

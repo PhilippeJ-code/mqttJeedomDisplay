@@ -538,7 +538,7 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                             {
                                 std::string visible = dataconditions["visible"];
                                 if (visible == "true")
-                                    lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
+                                    lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
                                 else
                                     lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
                                 bColor = false;

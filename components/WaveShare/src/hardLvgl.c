@@ -90,11 +90,7 @@ static void hardLvglTouch(lv_indev_t *indev, lv_indev_data_t *data)
 
 static void hardLvglIncreaseTick(void *arg)
 {
-    if (hardLvglLock(-1))
-    {
-        lv_tick_inc(LCD_LVGL_TICK_PERIOD_MS);
-        hardLvglUnlock();
-    }
+    lv_tick_inc(LCD_LVGL_TICK_PERIOD_MS);
 }
 
 static void hardLvglTask(void *arg)
@@ -151,6 +147,8 @@ void hardLvglInit()
     uint8_t pixelSize = lv_color_format_get_size(lv_display_get_color_format(disp));
     buf1 = heap_caps_malloc(LCD_H_RES * 100 * pixelSize, MALLOC_CAP_SPIRAM);
     assert(buf1);
+    buf2 = heap_caps_malloc(LCD_H_RES * 100 * pixelSize, MALLOC_CAP_SPIRAM);
+    assert(buf2);
 
     lv_display_set_user_data(disp, panel_handle);
     lv_display_set_flush_cb(disp, hardLvglFlush);
