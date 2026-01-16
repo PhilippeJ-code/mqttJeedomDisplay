@@ -17,6 +17,8 @@
 
 #include "WaveShare.h"
 
+#include "libs/lodepng/lodepng.h"
+
 // Wifi Manager
 //
 
@@ -68,8 +70,38 @@ static void log_error_if_nonzero(const char *message, int error_code)
 }
 
 static bool wifiIsConnected = false;
+static bool mqttFirstConnected = false;
 static bool mqttIsConnected = false;
 static bool canContinue = false;
+
+void snapshot_event_cb(lv_event_t *e)
+{
+
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_CLICKED)
+    {
+        lv_draw_buf_t *snapshot = lv_snapshot_take(lv_screen_active(), LV_COLOR_FORMAT_RGB888);
+
+        if (snapshot)
+        {
+            uint8_t *ptr = snapshot->data;
+            for (int w = 0; w < snapshot->header.w; w++)
+            {
+                for (int h = 0; h < snapshot->header.h; h++)
+                {
+                    uint8_t swap = *ptr;
+                    *ptr = *(ptr + 2);
+                    *(ptr + 2) = swap;
+
+                    ptr += 3;
+                }
+            }
+            lodepng_encode24_file("A:/snapshot.png", snapshot->data, snapshot->header.w, snapshot->header.h);
+            lv_draw_buf_destroy(snapshot);
+        }
+    }
+}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -82,6 +114,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_CONNECTED:
 
         mqttIsConnected = true;
+        if ( mqttFirstConnected == true)
+            jsonSubscribe();
+        else
+            mqttFirstConnected = true;
 
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
 
@@ -98,6 +134,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_UNSUBSCRIBED:
         break;
     case MQTT_EVENT_PUBLISHED:
+        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED");
+        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+        printf("DATA=%.*s\r\n", event->data_len, event->data);
         break;
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
@@ -132,6 +171,10 @@ static bool mqtt_app_start(void)
         (mqtt_cfg.credentials.username == NULL) ||
         (mqtt_cfg.credentials.authentication.password == NULL))
         return false;
+
+    mqtt_cfg.network.timeout_ms = 3000;
+    mqtt_cfg.session.keepalive = 3000;
+    mqtt_cfg.task.priority = 5;
 
     client = esp_mqtt_client_init(&mqtt_cfg);
 
@@ -877,9 +920,9 @@ void app_main(void)
 
         if (hardLvglLock(-1))
         {
-            lv_obj_set_style_text_font(lv_scr_act(), &my_font_montserrat_18, 0);
+            lv_obj_set_style_text_font(lv_screen_active(), &my_font_montserrat_18, 0);
 
-            liste = lv_list_create(lv_scr_act());
+            liste = lv_list_create(lv_screen_active());
             lv_obj_set_size(liste, 700, 200);
             lv_obj_center(liste);
 

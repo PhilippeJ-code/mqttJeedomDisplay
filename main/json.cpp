@@ -5,10 +5,9 @@
 #include <list>
 #include "esp_log.h"
 
+#include "lvgl.h"
 #include "gt911.h"
 #include "ArduinoJson.h"
-#include "lvgl.h"
-
 #include "mqtt_client.h"
 
 extern "C" char hardLvglLock(int timeout_ms);
@@ -16,6 +15,8 @@ extern "C" void hardLvglUnlock();
 
 extern "C" uint16_t nvsRead(char *name);
 extern "C" void nvsWrite(char *name, uint16_t value);
+
+extern "C" void snapshot_event_cb(lv_event_t *e);
 
 const char *TAG = "JSON";
 
@@ -95,6 +96,7 @@ static void event_arc(lv_event_t *e)
     if ((idx > -1) && (idx < nbrTopics))
     {
         esp_mqtt_client_publish(client, objets[idx].topic, buf, 0, 1, 0);
+        ESP_LOGI(TAG, "Publish : %s(%s)", objets[idx].topic, buf);
     }
 }
 
@@ -103,7 +105,14 @@ static void event_arc_change(lv_event_t *e)
     lv_obj_t *arc = lv_event_get_target_obj(e);
     lv_obj_t *label = (lv_obj_t *)lv_event_get_user_data(e);
 
-    lv_label_set_text_fmt(label, "%d", (int)lv_arc_get_value(arc));
+    if ( lv_event_get_param(e) == NULL)
+    {
+        lv_label_set_text_fmt(label, "%d", (int)lv_arc_get_value(arc));
+    }
+    else
+    {
+        lv_label_set_text(label, (const char *)lv_event_get_param(e));
+    }
 }
 
 static void event_chart(lv_event_t *e)
@@ -271,8 +280,6 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
     {
         std::string type = object["type"];
 
-        ESP_LOGI(TAG, "Object type %s", type.c_str());
-
         lv_obj_t *child = NULL;
 
         if (type == "arc")
@@ -423,20 +430,22 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
             std::string topic = object["topic"];
             if ((topic.length() < MAX_TOPIC_SIZE) && ((nbrTopics + 1) < MAX_TOPICS))
             {
-                strcpy(objets[nbrTopics].topic, topic.c_str());
-                nbrTopics++;
                 if ((type == "arc"))
                 {
+                    strcpy(objets[nbrTopics].topic, topic.c_str());
+                    nbrTopics++;
                     lv_obj_add_event_cb(child, event_arc, LV_EVENT_RELEASED, (void *)(nbrTopics - 1));
                 }
-
                 if ((type == "button"))
                 {
+                    strcpy(objets[nbrTopics].topic, topic.c_str());
+                    nbrTopics++;
                     lv_obj_add_event_cb(child, event_button, LV_EVENT_ALL, (void *)(nbrTopics - 1));
                 }
-
                 if (type == "slider")
                 {
+                    strcpy(objets[nbrTopics].topic, topic.c_str());
+                    nbrTopics++;
                     lv_obj_add_event_cb(child, event_slider, LV_EVENT_RELEASED, (void *)(nbrTopics - 1));
                 }
             }
@@ -477,17 +486,25 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                 }
                 else if ((type == "image") && (object.containsKey("name")))
                 {
-                    std::string text = object["name"];
-                    char texte[MAX_TEXT_SIZE + MAX_DATA_SIZE];
-                    sprintf(texte, text.c_str(), data);
+                    std::string name = object["name"];
+                    char nom[MAX_TEXT_SIZE + MAX_DATA_SIZE];
+                    sprintf(nom, name.c_str(), data);
 
-                    lv_img_set_src(obj, texte);
+                    lv_img_set_src(obj, nom);
                 }
                 else if (type == "arc")
                 {
+                    char *ptr = data;
+                    if (object.containsKey("text"))
+                    {
+                        std::string text = object["text"];
+                        char texte[MAX_TEXT_SIZE + MAX_DATA_SIZE];
+                        sprintf(texte, text.c_str(), data);
+                        ptr = texte;
+                    }
                     int16_t val = atoi(data);
                     lv_arc_set_value(obj, val);
-                    lv_obj_send_event(obj, LV_EVENT_VALUE_CHANGED, NULL);
+                    lv_obj_send_event(obj, LV_EVENT_VALUE_CHANGED, ptr);
                 }
                 else if (type == "chart")
                 {
@@ -521,6 +538,7 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                 JsonArray conditions = object["conditions"];
                 lv_obj_t *obj = (lv_obj_t *)((uint32_t)object["lv_obj_t"]);
                 bool bColor = true;
+                bool bName = true;
                 for (auto dataconditions : conditions)
                 {
                     if (dataconditions.containsKey("value"))
@@ -541,7 +559,12 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                                     lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
                                 else
                                     lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
-                                bColor = false;
+                            }
+                            else if ((type == "image") && (dataconditions.containsKey("name")))
+                            {
+                                std::string name = dataconditions["name"];
+                                lv_img_set_src(obj, name.c_str());
+                                bName = false;
                             }
                             break;
                         }
@@ -581,6 +604,11 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                 {
                     std::string color = object["color"];
                     set_style_text_color(obj, color);
+                }
+                if ((bName) && (object.containsKey("name")))
+                {
+                    std::string name = object["name"];
+                    lv_img_set_src(obj, name.c_str());
                 }
             }
         }
@@ -724,13 +752,29 @@ static void color_changer_create(lv_obj_t *parent)
     lv_obj_align(btn, LV_ALIGN_BOTTOM_RIGHT, -LV_DPX(15), -LV_DPX(15));
 }
 
+static void snapshot_create(lv_obj_t *parent)
+{
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_add_flag(btn, (lv_obj_flag_t)(LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_CLICKABLE));
+    lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_CHECKED);
+    lv_obj_set_style_pad_all(btn, 10, 0);
+    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+    lv_obj_add_event_cb(btn, snapshot_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_set_style_text_font(btn, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_IMAGE, 0);
+
+    lv_obj_set_size(btn, LV_DPX(50), LV_DPX(50));
+    lv_obj_align(btn, LV_ALIGN_TOP_LEFT, LV_DPX(15), LV_DPX(15));
+}
+
 extern "C" void jsonInit()
 {
     datas_mux = xSemaphoreCreateRecursiveMutex();
     assert(datas_mux);
 
     FILE *f = fopen(displayFile, "r");
-    if ( f == NULL )
+    if (f == NULL)
     {
         ESP_LOGI(TAG, "Erreur File Display");
         return;
@@ -767,10 +811,13 @@ extern "C" void jsonInit()
         lv_style_set_radius(&style, 5);
         lv_style_set_pad_all(&style, 5);
 
-        tv = lv_tabview_create(lv_scr_act());
+        tv = lv_tabview_create(lv_screen_active());
         lv_obj_set_style_text_font(tv, &my_font_montserrat_18, 0);
         lv_tabview_set_tab_bar_position(tv, LV_DIR_TOP);
         lv_tabview_set_tab_bar_size(tv, 60);
+
+        lv_obj_t *tab_bar = lv_tabview_get_tab_bar(tv);
+        lv_obj_set_style_pad_left(tab_bar, LV_DPX(80), 0);
 
         if (jsonDisplay.containsKey("objects"))
         {
@@ -787,6 +834,8 @@ extern "C" void jsonInit()
         lv_theme_default_init(NULL, lv_palette_main(current_palette), lv_palette_main(palette_secondary),
                               LV_THEME_DEFAULT_DARK, &lv_font_montserrat_18);
 #endif
+
+        snapshot_create(tv);
 
         hardLvglUnlock();
     }
@@ -806,7 +855,9 @@ extern "C" void jsonSubscribe()
                 std::string name = topic["topic"];
                 if (name.length() < MAX_TOPIC_SIZE)
                 {
-                    esp_mqtt_client_subscribe(client, name.c_str(), 0);
+                    int msg_id = esp_mqtt_client_subscribe_single(client, name.c_str(), 1);
+                    ESP_LOGI(TAG, "Subscribe : %s(%d)", name.c_str(), msg_id);
+                    vTaskDelay(pdMS_TO_TICKS(10));
                 }
             }
         }
@@ -865,13 +916,13 @@ extern "C" void jsonUpdate()
     }
 }
 
-extern "C" void jsonParametersMqtt(esp_mqtt_client_config_t* mqtt_cfg)
+extern "C" void jsonParametersMqtt(esp_mqtt_client_config_t *mqtt_cfg)
 {
 
     ESP_LOGI(TAG, "Parameters");
 
     FILE *f = fopen(mqttFile, "r");
-    if ( f == NULL )
+    if (f == NULL)
     {
         ESP_LOGI(TAG, "Erreur File Mqtt");
         return;
@@ -917,7 +968,7 @@ extern "C" void jsonParametersMqtt(esp_mqtt_client_config_t* mqtt_cfg)
             std::string password = parameters["password"];
             ESP_LOGI(TAG, "Password : %s", password.c_str());
             mqtt_cfg->credentials.authentication.password = strdup(password.c_str());
-        }        
+        }
     }
     else
     {
