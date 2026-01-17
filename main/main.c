@@ -112,39 +112,27 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch ((esp_mqtt_event_id_t)event_id)
     {
     case MQTT_EVENT_CONNECTED:
-
         mqttIsConnected = true;
-        if ( mqttFirstConnected == true)
+        if ( mqttFirstConnected == true) {
             jsonSubscribe();
-        else
+            jsonMqttConnected();
+        }
+        else {
             mqttFirstConnected = true;
-
-        ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-
+        }
         break;
     case MQTT_EVENT_DISCONNECTED:
-
         mqttIsConnected = false;
-
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+        jsonMqttDisconnected();
         break;
-
     case MQTT_EVENT_SUBSCRIBED:
-        break;
+         break;
     case MQTT_EVENT_UNSUBSCRIBED:
         break;
     case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED");
-        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        printf("DATA=%.*s\r\n", event->data_len, event->data);
         break;
     case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        printf("DATA=%.*s\r\n", event->data_len, event->data);
-
         jsonDataEvent(event);
-
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
@@ -174,7 +162,8 @@ static bool mqtt_app_start(void)
 
     mqtt_cfg.network.timeout_ms = 3000;
     mqtt_cfg.session.keepalive = 3000;
-    mqtt_cfg.task.priority = 5;
+    mqtt_cfg.task.priority = CONFIG_WIFI_MANAGER_TASK_PRIORITY;
+    mqtt_cfg.task.stack_size = 4096;
 
     client = esp_mqtt_client_init(&mqtt_cfg);
 
@@ -382,8 +371,6 @@ static esp_err_t http_resp_dir_html(httpd_req_t *req)
 //
 static const char *get_path_from_uri(char *dest, const char *base_path, const char *uri, size_t destsize)
 {
-    ESP_LOGI(TAG, "Base_path %s", base_path);
-
     const size_t base_pathlen = strlen(base_path);
     size_t pathlen = strlen(uri);
     uint16_t len = 0;
@@ -475,8 +462,6 @@ static esp_err_t download_get_handler(httpd_req_t *req)
     const char *filename = get_path_from_uri(filepath, server_data->base_path,
                                              req->uri, sizeof(filepath));
 
-    ESP_LOGI(TAG, "File : %s", filepath);
-
     if (!filename)
     {
         ESP_LOGE(TAG, "Filename is too long");
@@ -500,7 +485,6 @@ static esp_err_t download_get_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Sending file : %s (%ld bytes)...", filename, file_stat.st_size);
     set_content_type_from_file(req, filename);
 
     /* Retrieve the pointer to scratch buffer for temporary storage */
@@ -531,7 +515,6 @@ static esp_err_t download_get_handler(httpd_req_t *req)
 
     /* Close file after sending complete */
     fclose(fd);
-    ESP_LOGI(TAG, "File sending complete");
 
     /* Respond with an empty chunk to signal HTTP response completion */
 #ifdef CONFIG_EXAMPLE_HTTPD_CONN_CLOSE_HEADER
@@ -549,8 +532,6 @@ static esp_err_t change_dir_get_handler(httpd_req_t *req)
 
     const char *filename = get_path_from_uri(filepath, "",
                                              req->uri, sizeof(filepath));
-
-    ESP_LOGI(TAG, "Directory : %s", filepath);
 
     strcpy(current_path, filepath);
 
@@ -612,13 +593,11 @@ static esp_err_t change_up_dir_get_handler(httpd_req_t *req)
 {
     // Retirer le dernier niveau dans current_path
     //
-    ESP_LOGI(TAG, "Current Directory before up: %s", current_path);
     char *ptrFile = strrchr(current_path, '/');
     if (ptrFile != NULL && ptrFile != current_path)
     {
         *ptrFile = 0;
         ptrFile = strrchr(current_path, '/');
-        ESP_LOGI(TAG, "Current Directory after first up: %s", current_path);
         if (ptrFile != NULL && ptrFile != current_path)
         {
             ptrFile++;
@@ -628,7 +607,6 @@ static esp_err_t change_up_dir_get_handler(httpd_req_t *req)
         {
             strcpy(current_path, "/spiffs/");
         }
-        ESP_LOGI(TAG, "Current Directory after up: %s", current_path);
     }
 
     httpd_resp_set_status(req, "303 See Other");
@@ -684,8 +662,6 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Receiving file : %s...", filename);
-
     char *buf = server_data->scratch;
     int received;
 
@@ -694,7 +670,6 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
     while (remaining > 0)
     {
 
-        ESP_LOGI(TAG, "Remaining size : %d", remaining);
         /* Receive the file part by part into a buffer */
         if ((received = httpd_req_recv(req, buf, MIN(remaining, SCRATCH_BUFSIZE))) <= 0)
         {
@@ -736,7 +711,6 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 
     /* Close file upon upload completion */
     fclose(fd);
-    ESP_LOGI(TAG, "File reception complete");
 
     /* Redirect onto root to see the updated file list */
     httpd_resp_set_status(req, "303 See Other");
@@ -756,8 +730,6 @@ static esp_err_t delete_get_handler(httpd_req_t *req)
 
     const char *filename = get_path_from_uri(filepath, server_data->base_path,
                                              req->uri + sizeof("/delete") - 1, sizeof(filepath));
-
-    ESP_LOGI(TAG, "File to delete: %s", filepath);
 
     if (!filename)
     {
@@ -779,7 +751,6 @@ static esp_err_t delete_get_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Deleting file : %s", filename);
     unlink(filepath);
 
     httpd_resp_set_status(req, "303 See Other");
@@ -827,7 +798,6 @@ static esp_err_t my_get_handler(httpd_req_t *req)
     }
     else
     {
-        ESP_LOGI(TAG, "Unknown URI: %s", req->uri);
         httpd_resp_send_404(req);
     }
 
@@ -851,8 +821,12 @@ static esp_err_t my_post_handler(httpd_req_t *req)
 
 static void WifiConnected()
 {
-    ESP_LOGI(TAG, "Wifi Connected, Got IP");
     wifiIsConnected = true;
+}
+
+static void WifiDisconnected()
+{
+    wifiIsConnected = false;
 }
 
 static void continue_event_handler(lv_event_t *e)
@@ -871,7 +845,6 @@ static void wifi_event_handler(lv_event_t *e)
 
     if (code == LV_EVENT_CLICKED)
     {
-        ESP_LOGI(TAG, "Wifi_event_handler");
         nvsWrite("boot", 1);
         canContinue = true;
     }
@@ -932,6 +905,8 @@ void app_main(void)
 
         wifi_manager_start();
         wifi_manager_set_callback(WM_EVENT_STA_GOT_IP, WifiConnected);
+        wifi_manager_set_callback(WM_EVENT_STA_DISCONNECTED, WifiDisconnected);
+        
         while (wifiIsConnected == false)
         {
             vTaskDelay(10);
