@@ -326,6 +326,21 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
                 texte = t;
             }
             lv_checkbox_set_text(child, texte.c_str());
+            if (object.containsKey("size"))
+            {
+                std::string size = object["size"];
+                if (size == "large")
+                    lv_obj_set_style_text_font(child, &my_font_montserrat_30, 0);
+                else if (size == "medium")
+                    lv_obj_set_style_text_font(child, &my_font_montserrat_24, 0);
+                else
+                    lv_obj_set_style_text_font(child, &my_font_montserrat_18, 0);
+            }
+            if (object.containsKey("color"))
+            {
+                std::string color = object["color"];
+                set_style_text_color(child, color);
+            }
         }
         else if (type == "arc")
         {

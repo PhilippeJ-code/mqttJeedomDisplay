@@ -160,10 +160,11 @@ static bool mqtt_app_start(void)
         (mqtt_cfg.credentials.authentication.password == NULL))
         return false;
 
-    mqtt_cfg.network.timeout_ms = 3000;
-    mqtt_cfg.session.keepalive = 3000;
-    mqtt_cfg.task.priority = CONFIG_WIFI_MANAGER_TASK_PRIORITY;
+    mqtt_cfg.task.priority = CONFIG_WIFI_MANAGER_TASK_PRIORITY-1;
     mqtt_cfg.task.stack_size = 4096;
+
+    mqtt_cfg.buffer.size = 4096;
+    mqtt_cfg.buffer.out_size = 4096;
 
     client = esp_mqtt_client_init(&mqtt_cfg);
 
@@ -903,6 +904,8 @@ void app_main(void)
             hardLvglUnlock();
         }
 
+        esp_wifi_set_ps(WIFI_PS_NONE);
+
         wifi_manager_start();
         wifi_manager_set_callback(WM_EVENT_STA_GOT_IP, WifiConnected);
         wifi_manager_set_callback(WM_EVENT_STA_DISCONNECTED, WifiDisconnected);
@@ -981,7 +984,7 @@ void app_main(void)
 
         while (true)
         {
-            vTaskDelay(pdMS_TO_TICKS(10));
+            //vTaskDelay(pdMS_TO_TICKS(10));
             jsonUpdate();
         }
     }

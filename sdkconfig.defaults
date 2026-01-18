@@ -59,8 +59,3 @@ CONFIG_WS_TIMER_VALUE=60
 
 # Wifi
 CONFIG_LWIP_IPV6=y
-
-# Wifi Manager
-CONFIG_DEFAULT_AP_SSID="mqtt_jeedom"
-CONFIG_DEFAULT_AP_PASSWORD="password"
-
