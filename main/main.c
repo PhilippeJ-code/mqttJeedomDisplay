@@ -74,9 +74,8 @@ static bool mqttFirstConnected = false;
 static bool mqttIsConnected = false;
 static bool canContinue = false;
 
-void snapshot_event_cb(lv_event_t *e)
+void event_snapshot(lv_event_t *e)
 {
-
     lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_CLICKED)
@@ -113,20 +112,32 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     {
     case MQTT_EVENT_CONNECTED:
         mqttIsConnected = true;
-        if ( mqttFirstConnected == true) {
+        if (mqttFirstConnected == true)
+        {
             jsonSubscribe();
-            jsonMqttConnected();
+            esp_mqtt_event_t eve = {
+                .topic = "###mqtt###",
+                .topic_len = 10,
+                .data = "connected",
+                .data_len = 9};
+            jsonDataEvent(&eve);
         }
-        else {
+        else
+        {
             mqttFirstConnected = true;
         }
         break;
     case MQTT_EVENT_DISCONNECTED:
         mqttIsConnected = false;
-        jsonMqttDisconnected();
+        esp_mqtt_event_t eve = {
+            .topic = "###mqtt###",
+            .topic_len = 10,
+            .data = "disconnected",
+            .data_len = 12};
+        jsonDataEvent(&eve);
         break;
     case MQTT_EVENT_SUBSCRIBED:
-         break;
+        break;
     case MQTT_EVENT_UNSUBSCRIBED:
         break;
     case MQTT_EVENT_PUBLISHED:
@@ -160,7 +171,7 @@ static bool mqtt_app_start(void)
         (mqtt_cfg.credentials.authentication.password == NULL))
         return false;
 
-    mqtt_cfg.task.priority = CONFIG_WIFI_MANAGER_TASK_PRIORITY-1;
+    mqtt_cfg.task.priority = CONFIG_WIFI_MANAGER_TASK_PRIORITY - 1;
     mqtt_cfg.task.stack_size = 4096;
 
     mqtt_cfg.buffer.size = 4096;
@@ -909,7 +920,7 @@ void app_main(void)
         wifi_manager_start();
         wifi_manager_set_callback(WM_EVENT_STA_GOT_IP, WifiConnected);
         wifi_manager_set_callback(WM_EVENT_STA_DISCONNECTED, WifiDisconnected);
-        
+
         while (wifiIsConnected == false)
         {
             vTaskDelay(10);
@@ -984,7 +995,7 @@ void app_main(void)
 
         while (true)
         {
-            //vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(10));
             jsonUpdate();
         }
     }

@@ -102,6 +102,16 @@ static void hardLvglTask(void *arg)
         if (hardLvglLock(-1))
         {
 
+            task_delay_ms = lv_timer_handler();
+            if (task_delay_ms > LCD_LVGL_TASK_MAX_DELAY_MS)
+            {
+                task_delay_ms = LCD_LVGL_TASK_MAX_DELAY_MS;
+            }
+            else if (task_delay_ms < LCD_LVGL_TASK_MIN_DELAY_MS)
+            {
+                task_delay_ms = LCD_LVGL_TASK_MIN_DELAY_MS;
+            }
+
 #ifdef CONFIG_WS_USE_SCREENSAVER
             if (lv_disp_get_inactive_time(NULL) > CONFIG_WS_TIMER_VALUE * 1000)
             {
@@ -118,15 +128,6 @@ static void hardLvglTask(void *arg)
                 turn_backlight_on();
             }
 #endif
-            task_delay_ms = lv_timer_handler();
-            if (task_delay_ms > LCD_LVGL_TASK_MAX_DELAY_MS)
-            {
-                task_delay_ms = LCD_LVGL_TASK_MAX_DELAY_MS;
-            }
-            else if (task_delay_ms < LCD_LVGL_TASK_MIN_DELAY_MS)
-            {
-                task_delay_ms = LCD_LVGL_TASK_MIN_DELAY_MS;
-            }
             hardLvglUnlock();
         }
         vTaskDelay(pdMS_TO_TICKS(task_delay_ms));

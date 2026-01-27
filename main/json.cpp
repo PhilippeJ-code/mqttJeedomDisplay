@@ -16,8 +16,6 @@ extern "C" void hardLvglUnlock();
 extern "C" uint16_t nvsRead(char *name);
 extern "C" void nvsWrite(char *name, uint16_t value);
 
-extern "C" void snapshot_event_cb(lv_event_t *e);
-
 const char *TAG = "JSON";
 
 const char *displayFile = "/spiffs/display.json";
@@ -48,19 +46,17 @@ objets_t objets[MAX_TOPICS];
 
 // Objets lvgl
 //
-static lv_obj_t *tv = NULL;
-static lv_style_t image_style;
 
 extern "C" esp_mqtt_client_handle_t client;
 
 static SemaphoreHandle_t datas_mux = NULL;
 static std::list<std::string> datas;
 static std::list<std::string> topics;
-
 static lv_palette_t current_palette = LV_PALETTE_BLUE;
 
 static lv_style_t style;
-static lv_obj_t *ledMqtt;
+
+extern "C" void event_snapshot(lv_event_t *e);
 
 static void event_button(lv_event_t *e)
 {
@@ -120,7 +116,7 @@ static void event_checkbox(lv_event_t *e)
         if ((idx > -1) && (idx < nbrTopics))
         {
             esp_mqtt_client_publish(client, objets[idx].topic, buf, 0, 0, 0);
-         }
+        }
     }
 }
 
@@ -233,6 +229,18 @@ static void set_style_text_color(lv_obj_t *obj, std::string color)
         lv_obj_set_style_text_color(obj, lv_palette_main(LV_PALETTE_GREEN), 0);
     else if (color == "yellow")
         lv_obj_set_style_text_color(obj, lv_palette_main(LV_PALETTE_YELLOW), 0);
+    else if (color == "grey")
+        lv_obj_set_style_text_color(obj, lv_palette_main(LV_PALETTE_GREY), 0);
+    else if (color == "white")
+        lv_obj_set_style_text_color(obj, lv_color_white(), 0);
+    else if (color == "black")
+        lv_obj_set_style_text_color(obj, lv_color_black(), 0);
+}
+
+static void set_style_bg_color(lv_obj_t *obj, std::string color)
+{
+    if (color == "white")
+        lv_obj_set_style_bg_color(obj, lv_color_white(), 0);
 }
 
 static lv_align_t get_align_from_string(std::string align)
@@ -307,10 +315,29 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
     for (auto object : objects)
     {
         std::string type = object["type"];
-
         lv_obj_t *child = NULL;
 
-        if (type == "checkbox")
+        if (type == "tabview")
+        {
+            child = lv_tabview_create(lv_screen_active());
+            lv_obj_set_style_text_font(child, &my_font_montserrat_18, 0);
+            lv_tabview_set_tab_bar_position(child, LV_DIR_TOP);
+            lv_tabview_set_tab_bar_size(child, 60);
+
+            lv_obj_t *tab_bar = lv_tabview_get_tab_bar(child);
+
+            if (object.containsKey("pad_left"))
+            {
+                int16_t padLeft = object["pad_left"];
+                lv_obj_set_style_pad_left(tab_bar, padLeft, 0);
+            }
+            if (object.containsKey("pad_right"))
+            {
+                int16_t padRight = object["pad_right"];
+                lv_obj_set_style_pad_right(tab_bar, padRight, 0);
+            }
+        }
+        else if (type == "checkbox")
         {
             child = lv_checkbox_create(parent);
 
@@ -381,11 +408,33 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
         else if (type == "button")
         {
             child = lv_btn_create(parent);
-
             extract_position_and_size(object, x, y, w, h, 64, 64);
             set_align_from_string(object, child, x, y);
-
             lv_obj_set_size(child, w, h);
+            if (object.containsKey("bg_color"))
+            {
+                std::string bg_color = object["bg_color"];
+                set_style_bg_color(child, bg_color);
+            }
+        }
+        else if (type == "led")
+        {
+            child = lv_led_create(lv_screen_active());
+            extract_position_and_size(object, x, y, w, h, 25, 25);
+            set_align_from_string(object, child, x, y);
+            lv_obj_set_size(child, w, h);
+            lv_led_set_brightness(child, 150);
+            lv_led_set_color(child, lv_palette_main(LV_PALETTE_GREEN));
+
+            lv_led_off(child);
+            if (object.containsKey("state"))
+            {
+                std::string state = object["state"];
+                if (state == "on")
+                {
+                    lv_led_on(child);
+                }
+            }
         }
         else if (type == "chart")
         {
@@ -435,8 +484,7 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
             std::string texte = "Unknown";
             if (object.containsKey("text"))
             {
-                std::string t = object["text"];
-                texte = t;
+                texte = (std::string)object["text"];
             }
 
             lv_label_set_text(child, texte.c_str());
@@ -500,6 +548,7 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
                 {
                     strcpy(objets[nbrTopics].topic, topic.c_str());
                     nbrTopics++;
+
                     lv_obj_add_event_cb(child, event_button, LV_EVENT_CLICKED, (void *)(nbrTopics - 1));
                 }
                 else if (type == "slider")
@@ -516,6 +565,16 @@ static void createObjects(JsonArray &objects, lv_obj_t *parent)
                 }
             }
         }
+
+        if ((object.containsKey("action")) && (child != NULL))
+        {
+            std::string action = object["action"];
+            if ((type == "button") && (action == "snapshot"))
+            {
+                lv_obj_add_event_cb(child, event_snapshot, LV_EVENT_CLICKED, 0);
+            }
+        }
+
         if (child != NULL)
         {
             object["lv_obj_t"] = (uint32_t)child;
@@ -606,6 +665,7 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                 bool bColor = true;
                 bool bName = true;
                 bool bCondition = false;
+                bool bState = true;
                 for (auto dataconditions : conditions)
                 {
                     if (dataconditions.containsKey("value"))
@@ -656,6 +716,20 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                             lv_img_set_src(obj, name.c_str());
                             bName = false;
                         }
+                        if ((type == "led") && (dataconditions.containsKey("state")))
+                        {
+                            std::string state = dataconditions["state"];
+                            if (state == "on")
+                            {
+                                lv_led_on(obj);
+                                bState = false;
+                            }
+                            else if (state == "off")
+                            {
+                                lv_led_off(obj);
+                                bState = false;
+                            }
+                        }
                         if ((type == "checkbox") && (dataconditions.containsKey("checked")))
                         {
                             std::string checked = dataconditions["checked"];
@@ -672,10 +746,22 @@ static void updateObjects(JsonArray &objects, char *topic, char *data)
                     std::string color = object["color"];
                     set_style_text_color(obj, color);
                 }
-                if ((bName) && (object.containsKey("name")))
+                if ((bName) && (object.containsKey("name")) && (type == "image"))
                 {
                     std::string name = object["name"];
                     lv_img_set_src(obj, name.c_str());
+                }
+                if ((bState) && (object.containsKey("state")) && (type == "led"))
+                {
+                    std::string state = object["state"];
+                    if (state == "on")
+                    {
+                        lv_led_on(obj);
+                    }
+                    else if (state == "off")
+                    {
+                        lv_led_off(obj);
+                    }
                 }
             }
         }
@@ -819,43 +905,6 @@ static void color_changer_create(lv_obj_t *parent)
     lv_obj_align(btn, LV_ALIGN_BOTTOM_RIGHT, -LV_DPX(15), -LV_DPX(15));
 }
 
-static void snapshot_create(lv_obj_t *parent)
-{
-    lv_obj_t *btn = lv_btn_create(parent);
-    lv_obj_add_flag(btn, (lv_obj_flag_t)(LV_OBJ_FLAG_FLOATING | LV_OBJ_FLAG_CLICKABLE));
-    lv_obj_set_style_bg_color(btn, lv_color_white(), LV_STATE_CHECKED);
-    lv_obj_set_style_pad_all(btn, 10, 0);
-    lv_obj_set_style_radius(btn, 10, 0);
-    lv_obj_add_event_cb(btn, snapshot_event_cb, LV_EVENT_ALL, NULL);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_set_style_text_font(btn, &my_font_montserrat_30, 0);
-    lv_obj_set_style_bg_img_src(btn, LV_SYMBOL_IMAGE, 0);
-
-    lv_obj_set_size(btn, 56, 56);
-    lv_obj_align(btn, LV_ALIGN_TOP_LEFT, 2, 2);
-}
-
-static void mqtt_create(lv_obj_t *parent)
-{
-    ledMqtt = lv_led_create(lv_screen_active());
-
-    lv_obj_set_size(ledMqtt, 20, 20);
-    lv_obj_align(ledMqtt, LV_ALIGN_TOP_RIGHT, -10, 20);
-    lv_led_set_brightness(ledMqtt, 150);
-    lv_led_set_color(ledMqtt, lv_palette_main(LV_PALETTE_GREEN));
-    lv_led_on(ledMqtt);
-}
-
-extern "C" void jsonMqttConnected()
-{
-    lv_led_set_color(ledMqtt, lv_palette_main(LV_PALETTE_GREEN));
-}
-
-extern "C" void jsonMqttDisconnected()
-{
-    lv_led_set_color(ledMqtt, lv_palette_main(LV_PALETTE_RED));
-}
-
 extern "C" void jsonInit()
 {
     datas_mux = xSemaphoreCreateRecursiveMutex();
@@ -880,10 +929,11 @@ extern "C" void jsonInit()
 
     fclose(f);
 
-    DeserializationError error = deserializeJson(jsonDisplay, buf);
+    DeserializationOption::NestingLimit nestingLimit(15);
+    DeserializationError error = deserializeJson(jsonDisplay, buf, nestingLimit);
     if (error)
     {
-        ESP_LOGE(TAG, "Erreur Json");
+        ESP_LOGE(TAG, "Erreur Json : %s", error.c_str());
         return;
     }
 
@@ -891,33 +941,19 @@ extern "C" void jsonInit()
 
     if (hardLvglLock(-1))
     {
-        lv_style_init(&image_style);
-        lv_style_set_img_recolor_opa(&image_style, LV_OPA_COVER);
-        lv_style_set_img_recolor(&image_style, lv_palette_lighten(LV_PALETTE_GREY, 4));
-
         lv_style_init(&style);
         lv_style_set_radius(&style, 5);
         lv_style_set_pad_all(&style, 5);
 
-        tv = lv_tabview_create(lv_screen_active());
-        lv_obj_set_style_text_font(tv, &my_font_montserrat_18, 0);
-        lv_tabview_set_tab_bar_position(tv, LV_DIR_TOP);
-        lv_tabview_set_tab_bar_size(tv, 60);
-
-        lv_obj_t *tab_bar = lv_tabview_get_tab_bar(tv);
-        lv_obj_set_style_pad_left(tab_bar, 61, 0);
-        lv_obj_set_style_pad_right(tab_bar, 40, 0);
-
         if (jsonDisplay.containsKey("objects"))
         {
             JsonArray objects = jsonDisplay["objects"];
-            createObjects(objects, tv);
+            createObjects(objects, lv_screen_active());
         }
 
-        color_changer_create(tv);
+        // color_changer_create(tv);
 
-        snapshot_create(tv);
-        mqtt_create(tv);
+        // mqtt_create(tv);
 
         lv_palette_t palette_secondary = (lv_palette_t)(current_palette + 3);
         if (palette_secondary >= LV_PALETTE_LAST)
@@ -1045,7 +1081,7 @@ extern "C" void jsonParametersMqtt(esp_mqtt_client_config_t *mqtt_cfg)
         if (parameters.containsKey("username"))
         {
             std::string username = parameters["username"];
-             mqtt_cfg->credentials.username = strdup(username.c_str());
+            mqtt_cfg->credentials.username = strdup(username.c_str());
         }
         if (parameters.containsKey("password"))
         {
